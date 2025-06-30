@@ -11,26 +11,22 @@ import config
 from config import debug_print
 from static_mutation import prune_equivalent_codes
 from assertion_rewriter import rewrite_assert
+from ticoder_query_models_integration import get_enhanced_code_suggestions, save_diagnostics_if_available
 
 
 def gen_and_prune_codes(client, prog_data, tests_in_ctxt, token_counter=None):
-    if not config.use_oracle_as_code_suggestion:
-        orig_codes = get_code_suggestions(client,
-            prog_data, tests_in_ctxt, token_counter=token_counter)
-    else:
-        orig_codes = [prog_data['oracle']]
+    orig_codes = get_enhanced_code_suggestions(client, prog_data, tests_in_ctxt, token_counter)
+    
+    print(f"Finished generating {len(orig_codes)} code suggestions via Haskell translation")
 
-    print(f"Finished generating {len(orig_codes)} code suggestions")
+    # Skip the input() filtering - Haskell translation already ensures safety
+    # codes = [code for code in orig_codes if 'input(' not in code]  # REMOVE THIS
+    
+    # Only prune equivalent codes
+    codes = prune_equivalent_codes(orig_codes)  # Use orig_codes directly
 
-    # prune code that contains a user input (TODO: use ASTs to prune)
-    codes = [code for code in orig_codes if 'input(' not in code]
-
-    # prune equivalent codes
-    codes = prune_equivalent_codes(codes)
-
-    print(
-        f"Retained {len(codes)} code suggestions after removing equivalent codes")
-    return orig_codes, codes
+    print(f"Retained {len(codes)} code suggestions after removing equivalent codes")
+    return orig_codes, cod
 
 
 def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
