@@ -11,22 +11,86 @@ import config
 from config import debug_print
 from static_mutation import prune_equivalent_codes
 from assertion_rewriter import rewrite_assert
-from ticoder_query_models_integration import get_enhanced_code_suggestions, save_diagnostics_if_available
+
+# Add this import block after the existing imports
+try:
+    from ticoder_query_models_integration import (
+        HaskellTiCoderIntegration, 
+        get_current_diagnostics, 
+        save_diagnostics_if_available
+    )
+    HASKELL_INTEGRATION_AVAILABLE = True
+    debug_print("Haskell integration loaded successfully")
+except ImportError as e:
+    HASKELL_INTEGRATION_AVAILABLE = False
+    debug_print(f"Haskell integration not available: {e}")
+    debug_print("Falling back to original Python generation")
+
+
+# Global integration instance for Haskell generation
+_global_haskell_integration = None
+
+def get_haskell_integration():
+    """Get or create the global Haskell integration instance"""
+    global _global_haskell_integration
+    if _global_haskell_integration is None and HASKELL_INTEGRATION_AVAILABLE:
+        _global_haskell_integration = HaskellTiCoderIntegration()
+        debug_print("Created new Haskell integration instance")
+    return _global_haskell_integration
 
 
 def gen_and_prune_codes(client, prog_data, tests_in_ctxt, token_counter=None):
-    orig_codes = get_enhanced_code_suggestions(client, prog_data, tests_in_ctxt, token_counter)
+    """
+    Generate and prune code suggestions using Haskell-first approach when available,
+    fallback to original Python generation.
+    """
+    # Try Haskell generation first if available
+    if HASKELL_INTEGRATION_AVAILABLE:
+        integration = get_haskell_integration()
+        if integration is not None:
+            try:
+                debug_print("Using Haskell-first code generation")
+                haskell_codes, python_codes = integration.enhanced_get_code_suggestions(
+                    client, prog_data, tests_in_ctxt, token_counter
+                )
+                
+                # Store Haskell codes for later retrieval (for DSL translation)
+                if not hasattr(config, 'current_haskell_codes'):
+                    config.current_haskell_codes = {}
+                config.current_haskell_codes[prog_data.get('func_name', 'unknown')] = haskell_codes
+                
+                if len(python_codes) > 0:
+                    # Prune equivalent codes using TiCoder's existing logic
+                    codes = prune_equivalent_codes(python_codes)
+                    
+                    print(f"Finished generating {len(python_codes)} code suggestions via Haskell translation")
+                    print(f"Retained {len(codes)} code suggestions after removing equivalent codes")
+                    
+                    return python_codes, codes
+                else:
+                    debug_print("Haskell generation produced no results, falling back to Python generation")
+            except Exception as e:
+                debug_print(f"Haskell generation failed: {e}")
+                debug_print("Falling back to original Python generation")
     
-    print(f"Finished generating {len(orig_codes)} code suggestions via Haskell translation")
+    # Fallback to original Python generation
+    debug_print("Using original Python code generation")
+    
+    if not config.use_oracle_as_code_suggestion:
+        orig_codes = get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter=token_counter)
+    else:
+        orig_codes = [prog_data['oracle']]
 
-    # Skip the input() filtering - Haskell translation already ensures safety
-    # codes = [code for code in orig_codes if 'input(' not in code]  # REMOVE THIS
+    print(f"Finished generating {len(orig_codes)} code suggestions")
+
+    # Remove the input() filtering as requested - IO is fine
+    # codes = [code for code in orig_codes if 'input(' not in code]  # REMOVED
     
-    # Only prune equivalent codes
-    codes = prune_equivalent_codes(orig_codes)  # Use orig_codes directly
+    # Just prune equivalent codes
+    codes = prune_equivalent_codes(orig_codes)
 
     print(f"Retained {len(codes)} code suggestions after removing equivalent codes")
-    return orig_codes, cod
+    return orig_codes, codes
 
 
 def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
@@ -366,3 +430,22 @@ def get_or_create_codex_response(client, prompt_val, best_of_val, temp_val, echo
     v = (k, response, current_time)
     config.codex_query_response_log[str(k)] = v
     return response
+
+
+def get_haskell_diagnostics():
+    """Get current Haskell integration diagnostics"""
+    if HASKELL_INTEGRATION_AVAILABLE:
+        return get_current_diagnostics()
+    return {'haskell_integration_disabled': True}
+
+def save_haskell_diagnostics(filepath):
+    """Save Haskell diagnostics if available"""
+    if HASKELL_INTEGRATION_AVAILABLE:
+        return save_diagnostics_if_available(filepath)
+    return False
+
+def get_haskell_codes_for_function(func_name):
+    """Get the original Haskell codes for a function"""
+    if hasattr(config, 'current_haskell_codes'):
+        return config.current_haskell_codes.get(func_name, [])
+    return []
