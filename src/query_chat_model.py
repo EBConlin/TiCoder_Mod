@@ -12,86 +12,25 @@ from config import debug_print
 from static_mutation import prune_equivalent_codes
 from assertion_rewriter import rewrite_assert
 
-# Add this import block after the existing imports
-try:
-    from ticoder_query_models_integration import (
-        HaskellTiCoderIntegration, 
-        get_current_diagnostics, 
-        save_diagnostics_if_available
-    )
-    HASKELL_INTEGRATION_AVAILABLE = True
-    debug_print("Haskell integration loaded successfully")
-except ImportError as e:
-    HASKELL_INTEGRATION_AVAILABLE = False
-    debug_print(f"Haskell integration not available: {e}")
-    debug_print("Falling back to original Python generation")
-
-
-# Global integration instance for Haskell generation
-_global_haskell_integration = None
-
-def get_haskell_integration():
-    """Get or create the global Haskell integration instance"""
-    global _global_haskell_integration
-    if _global_haskell_integration is None and HASKELL_INTEGRATION_AVAILABLE:
-        _global_haskell_integration = HaskellTiCoderIntegration()
-        debug_print("Created new Haskell integration instance")
-    return _global_haskell_integration
-
 
 def gen_and_prune_codes(client, prog_data, tests_in_ctxt, token_counter=None):
-    """
-    Generate and prune code suggestions using Haskell-first approach when available,
-    fallback to original Python generation.
-    """
-    # Try Haskell generation first if available
-    if HASKELL_INTEGRATION_AVAILABLE:
-        integration = get_haskell_integration()
-        if integration is not None:
-            try:
-                debug_print("Using Haskell-first code generation")
-                haskell_codes, python_codes = integration.enhanced_get_code_suggestions(
-                    client, prog_data, tests_in_ctxt, token_counter
-                )
-                
-                # Store Haskell codes for later retrieval (for DSL translation)
-                if not hasattr(config, 'current_haskell_codes'):
-                    config.current_haskell_codes = {}
-                config.current_haskell_codes[prog_data.get('func_name', 'unknown')] = haskell_codes
-                
-                if len(python_codes) > 0:
-                    # Prune equivalent codes using TiCoder's existing logic
-                    codes = prune_equivalent_codes(python_codes)
-                    
-                    print(f"Finished generating {len(python_codes)} code suggestions via Haskell translation")
-                    print(f"Retained {len(codes)} code suggestions after removing equivalent codes")
-                    
-                    return python_codes, codes
-                else:
-                    debug_print("Haskell generation produced no results, falling back to Python generation")
-            except Exception as e:
-                debug_print(f"Haskell generation failed: {e}")
-                debug_print("Falling back to original Python generation")
-    
-    # Fallback to original Python generation
-    debug_print("Using original Python code generation")
-    
     if not config.use_oracle_as_code_suggestion:
-        orig_codes = get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter=token_counter)
+        orig_codes = get_code_suggestions(client,
+            prog_data, tests_in_ctxt, token_counter=token_counter)
     else:
         orig_codes = [prog_data['oracle']]
 
     print(f"Finished generating {len(orig_codes)} code suggestions")
 
-    # Remove the input() filtering as requested - IO is fine
-    # codes = [code for code in orig_codes if 'input(' not in code]  # REMOVED
-    
-    # Just prune equivalent codes
-    codes = prune_equivalent_codes(orig_codes)
+    # prune code that contains a user input (TODO: use ASTs to prune)
+    codes = [code for code in orig_codes if 'input(' not in code]
 
-    print(f"Retained {len(codes)} code suggestions after removing equivalent codes")
+    # prune equivalent codes
+    codes = prune_equivalent_codes(codes)
+
+    print(
+        f"Retained {len(codes)} code suggestions after removing equivalent codes")
     return orig_codes, codes
-
 
 def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
     # take a context and a signature
@@ -188,7 +127,27 @@ def get_prompt(prog_data):
     """Get a prompt for ChatCompletion API"""
     context = prog_data['ctxt']
     function_signature = prog_data['sig']
-
+    
+    new_system_role = """
+    You are a strict code generation assistant embedded in a formal logic pipeline.
+    Your job is to:
+    1. Generate a pure, stateless Haskell function using only canonical functional primitives:
+       - `map`, `filter`, `fold`, list comprehensions, and simple `let` bindings
+       - No recursion, pattern matching, IO, mutation, or side effects
+       - Functions must be pure, deterministic, and structurally simple
+    2. Translate the Haskell function into a Python function using only:
+           - List comprehensions
+           - Basic for-loops
+           - Simple expressions
+        Python Code Constraints:
+        - No imports
+        - No IO
+        - No recursion
+        - No mutation or reassignment
+        - No advanced syntax
+        - The output must be directly translatable into a restricted DSL (supporting only map, filter, reduce, conditionals, and basic control flow)
+        **Output only the final Python function. Do not include the Haskell code or any explanation.**
+        """
     prompt_text = f"Complete the following Python function:\n\n{function_signature}\n\n"
     if context.strip() != "":
         prompt_text += f"The context of the function is :\n\n{context}\n\n"
@@ -197,8 +156,7 @@ def get_prompt(prog_data):
     prompt = [
         {
             "role": "system",
-            "content": "Suppose you are a code completion engine. You are asked to complete the following Python function. " +
-            "The function signature is given below. The context of the function is also provided. Complete the function. "
+            "content": new_system_role
         },
         {
             "role": "user",
@@ -432,20 +390,3 @@ def get_or_create_codex_response(client, prompt_val, best_of_val, temp_val, echo
     return response
 
 
-def get_haskell_diagnostics():
-    """Get current Haskell integration diagnostics"""
-    if HASKELL_INTEGRATION_AVAILABLE:
-        return get_current_diagnostics()
-    return {'haskell_integration_disabled': True}
-
-def save_haskell_diagnostics(filepath):
-    """Save Haskell diagnostics if available"""
-    if HASKELL_INTEGRATION_AVAILABLE:
-        return save_diagnostics_if_available(filepath)
-    return False
-
-def get_haskell_codes_for_function(func_name):
-    """Get the original Haskell codes for a function"""
-    if hasattr(config, 'current_haskell_codes'):
-        return config.current_haskell_codes.get(func_name, [])
-    return []
