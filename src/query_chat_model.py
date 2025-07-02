@@ -220,84 +220,93 @@ def openai_chat_completion(client, messages: List[Dict[str, str]], model: str = 
 def format_bad_examples(examples: List[str]) -> str:
     if not examples:
         return ""
-    return "\nAvoid the following invalid examples:\n" + "\n".join(f"```haskell\n{ex}\n```" for ex in examples)
-
-def run_llm_until_token_exits(
+    return "\nAvoid the following invalid examples:\n" + "\n".join(f"\n{ex}\n```" for ex in examples)
+    
+def generate_valid_code(
     client: openai.OpenAI,
     system_prompt: str,
     user_prompt: str,
     token_to_check: str,
+    judge_prompt: str,
     max_iterations: int = 5,
     model: str = "gpt-4o",
-    temperature: float = 0,
+    coder_temp: float = 0.3,
+    judge_temp: float = 0,
     max_tokens: int = 1024,
-) -> Tuple[bool, str]:
+) -> Tuple[bool, str, str]:
     """
-    Run LLM call repeatedly until the token no longer appears in the output or max_iterations is reached.
+    Run LLM call repeatedly:
+    - Generate code
+    - Judge the code for presence of token
 
     Returns:
-        (bool, str):
-            bool - True if exited because token disappeared, False if max_iterations reached
-            str - last LLM response content
+        (bool, str, str):
+            bool - True if exited because token disappeared
+            str  - Last code generated
+            str  - Last judgement result
     """
     bad_code = []
-    for i in range(max_iterations):
-        prompt = system_prompt.format(
+
+    for _ in range(max_iterations):
+        formatted_system_prompt = system_prompt.format(
             bad_examples_section=format_bad_examples(bad_code)
         )
-        response = client.chat.completions.create(
+
+        # Generate code
+        gen_response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": formatted_system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
             max_tokens=max_tokens,
             temperature=temperature,
             n=1
         )
-        content = response.choices[0].message.content.strip()
-        bad_code.append(content)
-        if token_to_check not in content:
-            return True, content  # Token no longer found
-        
-    return False, content  # Max iterations reached
+        generated_code = gen_response.choices[0].message.content.strip()
+        bad_code.append(generated_code)
 
+        # Judge the generated code
+        judge_response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": judge_prompt},
+                {"role": "user", "content": generated_code},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+            n=1
+        )
+        judgement = judge_response.choices[0].message.content.strip()
+
+        if token_to_check not in judgement:
+            return True, generated_code, judgement
+
+    return False, generated_code, judgement
 
 def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
-    # Generate Haskell
-    haskell_code = openai_chat_completion(client, 
-        [{"role": "system", "content": HASKELL_SYSTEM_PROMPT_TEMPLATE},
-        {"role": "user", "content": function_description}
-    ]).choices[0].message.content.strip()
-
-    (valid,valid_haskell) = run_llm_until_token_exits(client,
-                                               f"Check this Haskell function:\n{haskell_code}\n```",
-                                               HASKELL_JUDGE_PROMPT,
-                                               "❌",
-                                                temperature=0)
-
-
-    python_code = openai_chat_completion(client,
-        [{"role": "system", "content": HASKELL_TO_PYTHON_LLM_PROMPT},
-        {"role": "user", "content": f"Translate this Haskell function to Python:\n\n{valid_haskell}"}
-        ]).choices[0].message.content.strip()
-
     
-    (valid,valid_python) = run_llm_until_token_exits(client,
-                                               f"Check this Python function:\n{python_code}\n```",
-                                               PYTHON_JUDGE_PROMPT,
-                                               "❌",
-                                                temperature=0)
-
+    # Generate Haskell
+    hs_valid, haskell_code, hs_judgement = generate_valid_code(client,
+                                                    system_prompt = HASKELL_SYSTEM_PROMPT_TEMPLATE,
+                                                    user_prompt = function_description,
+                                                    token_to_check = "❌",
+                                                    judge_prompt = HASKELL_JUDGE_PROMPT)
+    # Generate Python
+    py_valid, python_code, py_judgement = generate_valid_code(client,
+                                                    system_prompt = HASKELL_TO_PYTHON_LLM_PROMPT,
+                                                    user_prompt = function_description,
+                                                    token_to_check = "❌",
+                                                    judge_prompt = PYTHON_JUDGE_PROMPT)
     print(f"Haskell:\n{haskell_code}")
-    print(f"Judgment: {valid,valid_haskell}")
+    print(f"Judgment: {hs_valid,hs_judgement}")
     print(f"Python:\n{python_code}")
-    print(f"Judgment: {(valid,valid_python)}")
+    print(f"Judgment: {(py_valid,py_judgement)}")
     return {
         "haskell": haskell_code,
-        "haskell_judge": (valid,valid_haskell),
+        "haskell_judge": (hs_valid,hs_judgement),
         "python": python_code,
-        "python_judge": (valid,valid_python)
+        "python_judge": (py_valid,py_judgement)
     }
         
 def get_custom_code_suggestions(client,prog_data,n_iterations) -> List[str]:
