@@ -45,10 +45,9 @@ def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
     print(prompt)
     print('-' * 80)
     
-    context = prog_data['ctxt']
-    function_signature = prog_data['sig']
+
     # query codex for suggestions
-    code_suggestions = get_custom_code_suggestions(client, context, function_signature)
+    code_suggestions = get_custom_code_suggestions(client, prog_data)
     
     debug_print('Codes' + '*' * 80)
     for suggestion in code_suggestions:
@@ -234,7 +233,7 @@ def run_openai_pipeline(client,function_description: str) -> Dict[str, str]:
         "python_judge": (valid,valid_python)
     }
         
-def get_custom_code_suggestions(client,context) -> List[str]:
+def get_custom_code_suggestions(client,prog_data) -> List[str]:
     function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
     results_dict = run_openai_pipeline(client, function_description)
     return [results_dict["python_code"]]
