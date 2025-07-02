@@ -122,8 +122,31 @@ def filter_response(resp_text):
             resp_text = resp_text.split("`")[0]
     return resp_text
 
-
 def get_prompt(prog_data):
+    """Get a prompt for ChatCompletion API"""
+    context = prog_data['ctxt']
+    function_signature = prog_data['sig']
+
+    prompt_text = f"Complete the following Python function:\n\n{function_signature}\n\n"
+    if context.strip() != "":
+        prompt_text += f"The context of the function is :\n\n{context}\n\n"
+    prompt_text += "Surround the function with <code> and </code> tags.\n"
+    prompt_text += "Do not explain the function, just complete the function.\n"
+    prompt = [
+        {
+            "role": "system",
+            "content": "Suppose you are a code completion engine. You are asked to complete the following Python function. " +
+            "The function signature is given below. The context of the function is also provided. Complete the function. "
+        },
+        {
+            "role": "user",
+            "content": prompt_text
+        }
+    ]
+    return prompt
+
+
+def mod_get_prompt(prog_data):
     """Get a prompt for ChatCompletion API"""
     context = prog_data['ctxt']
     function_signature = prog_data['sig']
