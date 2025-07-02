@@ -183,7 +183,9 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
                     'num_pos_tests' : len(tests),
                     'num_neg_tests' : len(neg_tests),
                     'status'        : status,
-                    'weights'       : weights
+                    'weights'       : weights,
+                    'codes'         : codes,
+                    'tests'         : tests
                 }
         if get_pruned_stats_in_global:
             num_of_original_tests_left = 0
@@ -204,14 +206,6 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         print()
     print('=' * 50  + 'End Final Results' + '=' * 50)
 
-    # Save final code to Python file
-    with open("results/final_code.py", "w") as f:
-        for i, code in enumerate(final_code_output, start=1):
-            f.write(f"# === Code Suggestion {i} ===\n{code}\n\n")
-
-    # Save final tests to Pickle file
-    with open("results/final_tests.pkl", "wb") as f:
-        pickle.dump(final_test_output, f)
 
 
 def append_to_json(file_path, data):
