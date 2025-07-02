@@ -283,7 +283,7 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
                                                "❌")
 
 
-    python_code = openai_chat_completion(client
+    python_code = openai_chat_completion(client,
         [{"role": "system", "content": HASKELL_TO_PYTHON_LLM_PROMPT},
         {"role": "user", "content": f"Translate this Haskell function to Python:\n\n{valid_haskell}"}
         ]).choices[0].message.content.strip()
