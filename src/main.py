@@ -204,6 +204,15 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         print()
     print('=' * 50  + 'End Final Results' + '=' * 50)
 
+    # Save final code to Python file
+    with open("final_code.py", "w") as f:
+        for i, code in enumerate(final_code_output, start=1):
+            f.write(f"# === Code Suggestion {i} ===\n{code}\n\n")
+
+    # Save final tests to Pickle file
+    with open("final_tests.pkl", "wb") as f:
+        pickle.dump(final_test_output, f)
+
 
 def append_to_json(file_path, data):
     # append dictionary to an json file
