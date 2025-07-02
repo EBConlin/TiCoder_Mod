@@ -271,7 +271,7 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
     ]).choices[0].message.content.strip()
 
     (valid,valid_haskell) = run_llm_until_token_exits(client,
-                                               f"Check this Haskell function:\n```haskell\n{haskell_code}\n```",
+                                               f"Check this Haskell function:\n{haskell_code}\n```",
                                                HASKELL_JUDGE_PROMPT,
                                                "❌",
                                                 temperature=0)
@@ -284,7 +284,7 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
 
     
     (valid,valid_python) = run_llm_until_token_exits(client,
-                                               f"Check this Haskell function:\n```haskell\n{python_code}\n```",
+                                               f"Check this Python function:\n{python_code}\n```",
                                                PYTHON_JUDGE_PROMPT,
                                                "❌",
                                                 temperature=0)
