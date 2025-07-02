@@ -44,11 +44,12 @@ def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
     print('-' * 80)
     print(prompt)
     print('-' * 80)
-
+    
+    context = prog_data['ctxt']
+    function_signature = prog_data['sig']
     # query codex for suggestions
-    code_suggestions = get_codex_code_suggestions(client,
-        prog_data['ctxt'], prompt, config.MAX_NUM_CODEX_CODE_SUGGESTIONS, token_counter=token_counter
-    )
+    code_suggestions = get_custom_code_suggestions(client, context, function_signature)
+    
     debug_print('Codes' + '*' * 80)
     for suggestion in code_suggestions:
         debug_print(suggestion)
@@ -145,48 +146,98 @@ def get_prompt(prog_data):
     ]
     return prompt
 
+def openai_chat_completion(messages: List[Dict[str, str]], model: str = "gpt-4o", temperature: float = 0.3) -> str:
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=1024,
+        n=1
+    )
+    return response
 
-def mod_get_prompt(prog_data):
-    """Get a prompt for ChatCompletion API"""
-    context = prog_data['ctxt']
-    function_signature = prog_data['sig']
+
+def format_bad_examples(examples: List[str]) -> str:
+    if not examples:
+        return ""
+    return "\nAvoid the following invalid examples:\n" + "\n".join(f"```haskell\n{ex}\n```" for ex in examples)
+
+def run_llm_until_token_exits(
+    client: openai.OpenAI,
+    system_prompt: str,
+    user_prompt: str,
+    token_to_check: str,
+    max_iterations: int = 5,
+    model: str = "gpt-4o",
+    temperature: float = 0,
+    max_tokens: int = 1024,
+) -> Tuple[bool, str]:
+    """
+    Run LLM call repeatedly until the token no longer appears in the output or max_iterations is reached.
+
+    Returns:
+        (bool, str):
+            bool - True if exited because token disappeared, False if max_iterations reached
+            str - last LLM response content
+    """
+    bad_code = []
+    for i in range(max_iterations):
+        prompt = system_prompt.format(
+            bad_examples_section=format_bad_examples(bad_code)
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+            n=1
+        )
+        content = response.choices[0].message.content.strip()
+        bad_code.append(content)
+        if token_to_check not in content:
+            return True, content  # Token no longer found
+        
+    return False, content  # Max iterations reached
+
+
+def run_openai_pipeline(client,function_description: str) -> Dict[str, str]:
+    # Generate Haskell
+    haskell_code = openai_chat_completion([
+        {"role": "system", "content": HASKELL_SYSTEM_PROMPT_TEMPLATE},
+        {"role": "user", "content": function_description}
+    ]).choices[0].message.content.strip()
+
+    (valid,valid_haskell) = run_llm_until_token_exits(client,
+                                               f"Check this Haskell function:\n```haskell\n{haskell_code}\n```",
+                                               HASKELL_JUDGE_PROMPT,
+                                               "❌")
+
+
+    python_code = openai_chat_completion([
+        {"role": "system", "content": HASKELL_TO_PYTHON_LLM_PROMPT},
+        {"role": "user", "content": f"Translate this Haskell function to Python:\n\n{valid_haskell}"}
+        ]).choices[0].message.content.strip()
+
     
-    new_system_role = """
-    You are a strict code generation assistant embedded in a formal logic pipeline.
-    Your job is to:
-    1. Generate a pure, stateless Haskell function using only canonical functional primitives:
-       - `map`, `filter`, `fold`, list comprehensions, and simple `let` bindings
-       - No recursion, pattern matching, IO, mutation, or side effects
-       - Functions must be pure, deterministic, and structurally simple
-    2. Translate the Haskell function into a Python function using only:
-           - List comprehensions
-           - Basic for-loops
-           - Simple expressions
-        Python Code Constraints:
-        - No imports
-        - No IO
-        - No recursion
-        - No mutation or reassignment
-        - No advanced syntax
-        - The output must be directly translatable into a restricted DSL (supporting only map, filter, reduce, conditionals, and basic control flow)
-        **Output only the final Python function. Do not include the Haskell code or any explanation.**
-        """
-    prompt_text = f"Complete the following Python function:\n\n{function_signature}\n\n"
-    if context.strip() != "":
-        prompt_text += f"The context of the function is :\n\n{context}\n\n"
-    prompt_text += "Surround the function with <code> and </code> tags.\n"
-    prompt_text += "Do not explain the function, just complete the function.\n"
-    prompt = [
-        {
-            "role": "system",
-            "content": new_system_role
-        },
-        {
-            "role": "user",
-            "content": prompt_text
-        }
-    ]
-    return prompt
+    (valid,valid_python) = run_llm_until_token_exits(client,
+                                               f"Check this Haskell function:\n```haskell\n{python_code}\n```",
+                                               PYTHON_JUDGE_PROMPT,
+                                               "❌")
+
+    return {
+        "haskell": haskell_code,
+        "haskell_judge": (valid,valid_haskell),
+        "python": python_code,
+        "python_judge": (valid,valid_python)
+    }
+        
+def get_custom_code_suggestions(client,context) -> List[str]:
+    function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
+    results_dict = run_openai_pipeline(client, function_description)
+    return [results_dict["python_code"]]
 
 
 def get_codex_code_suggestions(client, context, prompt, num_sugg, token_counter):
