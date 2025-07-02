@@ -19,19 +19,22 @@ import os
 import subprocess
 
 # System prompts
-HASKELL_TO_PYTHON_LLM_PROMPT = """You are a strict Haskell-to-Python translator in a DSL synthesis pipeline.
-
-Constraints:
-- Input: pure, safe Haskell function (no recursion, IO, or imports)
-- Output: a single Python function using only:
-  - list comprehensions
-  - map, filter, reduce
-  - pure expressions and basic conditionals
-- Do not use imports, mutation, or advanced syntax
-- Do not include explanations or markdown — just the Python code
-- All return values must match the Haskell semantics exactly
-
-Output only valid Python code. No markdown or commentary.
+HASKELL_TO_PYTHON_LLM_PROMPT = """You are a strict Haskell-to-Python translator operating within a formal DSL synthesis pipeline.
+Input: A pure, safe Haskell function (no recursion, no IO, no imports).
+Output: A single valid Python function that strictly follows these constraints:
+Use only:
+map, filter, reduce,
+list comprehensions,
+pure expressions and basic conditionals,
+Do not use:
+imports,
+mutation or reassignment,
+recursion,
+IO,
+advanced syntax or any libraries,
+The return value must match Haskell semantics exactly
+Output only Python code. No markdown, no explanations, no comments.
+If provided, treat {bad_examples_section} as known anti-patterns to avoid.
 """
 
 HASKELL_SYSTEM_PROMPT_TEMPLATE = """You are a strict Haskell code generator operating in a formal DSL synthesis pipeline.
@@ -45,24 +48,6 @@ Only output the Haskell code block. Do not include comments or explanation.
 
 """
 
-
-PYTHON_CONVERTER_PROMPT_TEMPLATE = """You are a Python converter operating in a formal DSL pipeline. You are given a pure, safe Haskell function and must translate it into Python code.
-Use only:
-- List comprehensions
-- Basic for-loops
-- Pure functions and expressions
-Constraints:
-- No imports
-- No IO
-- No mutation or reassignment
-- No recursion
-- No libraries or advanced syntax
-- Output must be compatible with a DSL that supports only `map`, `filter`, `reduce`, conditionals, and basic control flow
-{bad_examples_section}
-Output a single valid Python function.
-Do not include the Haskell code, explanation, or anything else.
-"""
-
 HASKELL_JUDGE_PROMPT = """You are a code compliance judge for Haskell functions in a DSL pipeline. Determine whether the function uses only:
 - map, filter, fold, list comprehensions, let-bindings
 Forbidden: recursion, pattern matching, IO, imports, or mutation.
@@ -71,10 +56,18 @@ Respond with:
 - Short reason and code excerpts if rejected
 """
 
-PYTHON_JUDGE_PROMPT = """You are a code compliance judge in a DSL synthesis pipeline. You are given a Python function and must determine whether it is valid for conversion into a restricted DSL.
-Rules:
-- ✅ Allowed: `map`, `filter`, `reduce`, list comprehensions, simple for-loops, arithmetic, and conditionals
-- ❌ Forbidden: any `import`, `IO`, `re`, `json`, `open`, `eval`, mutation, recursion, or advanced syntax
+PYTHON_JUDGE_PROMPT = """
+You are a code compliance judge in a DSL synthesis pipeline. You are given a Python function and must determine whether it is valid for conversion into a restricted DSL.
+
+Check for:
+- ✅ Syntactically valid Python code (no syntax errors or malformed formatting)
+- ✅ Proper formatting: no markdown, no backticks, no Haskell-style syntax
+- ✅ Compliance with DSL rules
+
+DSL Rules:
+- ✅ Allowed: map, filter, reduce, list comprehensions, simple for-loops, arithmetic, and conditionals
+- ❌ Forbidden: any import, IO, re, json, open, eval, mutation, recursion, or advanced syntax
+
 Respond with:
 - ✅ DSL-Compatible or ❌ Rejected
 - Short reason and code excerpts if rejected
@@ -280,7 +273,8 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
     (valid,valid_haskell) = run_llm_until_token_exits(client,
                                                f"Check this Haskell function:\n```haskell\n{haskell_code}\n```",
                                                HASKELL_JUDGE_PROMPT,
-                                               "❌")
+                                               "❌",
+                                                temperature=0)
 
 
     python_code = openai_chat_completion(client,
@@ -292,7 +286,8 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
     (valid,valid_python) = run_llm_until_token_exits(client,
                                                f"Check this Haskell function:\n```haskell\n{python_code}\n```",
                                                PYTHON_JUDGE_PROMPT,
-                                               "❌")
+                                               "❌",
+                                                temperature=0)
 
     print(f"Haskell:\n{haskell_code}")
     print(f"Judgment: {valid,valid_haskell}")
