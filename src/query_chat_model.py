@@ -11,13 +11,74 @@ import config
 from config import debug_print
 from static_mutation import prune_equivalent_codes
 from assertion_rewriter import rewrite_assert
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 import json
 from dataclasses import dataclass
 from enum import Enum
 import os
 import subprocess
 
+# System prompts
+HASKELL_TO_PYTHON_LLM_PROMPT = """You are a strict Haskell-to-Python translator in a DSL synthesis pipeline.
+
+Constraints:
+- Input: pure, safe Haskell function (no recursion, IO, or imports)
+- Output: a single Python function using only:
+  - list comprehensions
+  - map, filter, reduce
+  - pure expressions and basic conditionals
+- Do not use imports, mutation, or advanced syntax
+- Do not include explanations or markdown — just the Python code
+- All return values must match the Haskell semantics exactly
+
+Output only valid Python code. No markdown or commentary.
+"""
+
+HASKELL_SYSTEM_PROMPT_TEMPLATE = """You are a strict Haskell code generator operating in a formal DSL synthesis pipeline.
+Your task is to generate a pure, stateless Haskell function using only canonical functional primitives:
+- `map`, `filter`, `fold`, list comprehensions, and simple `let` bindings
+- No recursion, pattern matching, IO, mutation, or side effects
+- Functions must be total, deterministic, and structurally simple
+- Do not use any imports or libraries
+{bad_examples_section}
+Only output the Haskell code block. Do not include comments or explanation.
+
+"""
+
+
+PYTHON_CONVERTER_PROMPT_TEMPLATE = """You are a Python converter operating in a formal DSL pipeline. You are given a pure, safe Haskell function and must translate it into Python code.
+Use only:
+- List comprehensions
+- Basic for-loops
+- Pure functions and expressions
+Constraints:
+- No imports
+- No IO
+- No mutation or reassignment
+- No recursion
+- No libraries or advanced syntax
+- Output must be compatible with a DSL that supports only `map`, `filter`, `reduce`, conditionals, and basic control flow
+{bad_examples_section}
+Output a single valid Python function.
+Do not include the Haskell code, explanation, or anything else.
+"""
+
+HASKELL_JUDGE_PROMPT = """You are a code compliance judge for Haskell functions in a DSL pipeline. Determine whether the function uses only:
+- map, filter, fold, list comprehensions, let-bindings
+Forbidden: recursion, pattern matching, IO, imports, or mutation.
+Respond with:
+- ✅ Haskell-Compatible or ❌ Rejected
+- Short reason and code excerpts if rejected
+"""
+
+PYTHON_JUDGE_PROMPT = """You are a code compliance judge in a DSL synthesis pipeline. You are given a Python function and must determine whether it is valid for conversion into a restricted DSL.
+Rules:
+- ✅ Allowed: `map`, `filter`, `reduce`, list comprehensions, simple for-loops, arithmetic, and conditionals
+- ❌ Forbidden: any `import`, `IO`, `re`, `json`, `open`, `eval`, mutation, recursion, or advanced syntax
+Respond with:
+- ✅ DSL-Compatible or ❌ Rejected
+- Short reason and code excerpts if rejected
+"""
 
 
 def gen_and_prune_codes(client, prog_data, tests_in_ctxt, token_counter=None):
