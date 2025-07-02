@@ -115,7 +115,7 @@ def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
     
 
     # query codex for suggestions
-    code_suggestions = get_custom_code_suggestions(client, prog_data)
+    code_suggestions = get_custom_code_suggestions(client, prog_data, config.MAX_NUM_CODEX_CODE_SUGGESTIONS)
     
     debug_print('Codes' + '*' * 80)
     for suggestion in code_suggestions:
@@ -294,6 +294,10 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
                                                PYTHON_JUDGE_PROMPT,
                                                "❌")
 
+    print(f"Haskell:\n{haskell_code}")
+    print(f"Judgment: {valid,valid_haskell}")
+    print(f"Python:\n{python_code}")
+    print(f"Judgment: {(valid,valid_python)}")
     return {
         "haskell": haskell_code,
         "haskell_judge": (valid,valid_haskell),
@@ -301,10 +305,10 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
         "python_judge": (valid,valid_python)
     }
         
-def get_custom_code_suggestions(client,prog_data) -> List[str]:
+def get_custom_code_suggestions(client,prog_data,n_iterations) -> List[str]:
     function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
     results_dict = run_openai_pipeline(client, function_description)
-    return [results_dict["python"]]
+    return [results_dict["python"] for _ in range(n_iterations)]
 
 
 def get_codex_code_suggestions(client, context, prompt, num_sugg, token_counter):
