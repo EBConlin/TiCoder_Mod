@@ -213,7 +213,7 @@ def get_prompt(prog_data):
     ]
     return prompt
 
-def openai_chat_completion(messages: List[Dict[str, str]], model: str = "gpt-4o", temperature: float = 0.3) -> str:
+def openai_chat_completion(client, messages: List[Dict[str, str]], model: str = "gpt-4o", temperature: float = 0.3) -> str:
     response = client.chat.completions.create(
         model=model,
         messages=messages,
@@ -270,10 +270,10 @@ def run_llm_until_token_exits(
     return False, content  # Max iterations reached
 
 
-def run_openai_pipeline(client,function_description: str) -> Dict[str, str]:
+def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
     # Generate Haskell
-    haskell_code = openai_chat_completion([
-        {"role": "system", "content": HASKELL_SYSTEM_PROMPT_TEMPLATE},
+    haskell_code = openai_chat_completion(client, 
+        [{"role": "system", "content": HASKELL_SYSTEM_PROMPT_TEMPLATE},
         {"role": "user", "content": function_description}
     ]).choices[0].message.content.strip()
 
@@ -283,8 +283,8 @@ def run_openai_pipeline(client,function_description: str) -> Dict[str, str]:
                                                "❌")
 
 
-    python_code = openai_chat_completion([
-        {"role": "system", "content": HASKELL_TO_PYTHON_LLM_PROMPT},
+    python_code = openai_chat_completion(client
+        [{"role": "system", "content": HASKELL_TO_PYTHON_LLM_PROMPT},
         {"role": "user", "content": f"Translate this Haskell function to Python:\n\n{valid_haskell}"}
         ]).choices[0].message.content.strip()
 
