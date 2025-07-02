@@ -304,7 +304,7 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
 def get_custom_code_suggestions(client,prog_data) -> List[str]:
     function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
     results_dict = run_openai_pipeline(client, function_description)
-    return [results_dict["python_code"]]
+    return [results_dict["python"]]
 
 
 def get_codex_code_suggestions(client, context, prompt, num_sugg, token_counter):
