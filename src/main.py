@@ -290,13 +290,15 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         converted_code = []
         for code in codes:
             print(code)
-            composable_code = generate_valid_code(client,
-                                                  system_prompt = COMPOSABLE_CODER_PROMPT,
-                                                  user_prompt = function_description,
-                                                  token_to_check = "❌",
-                                                  judge_prompt = COMPOSABLE_JUDGE_PROMPT,
-                                                  filter = False)
-            converted_code.append((code,composable_code))
+            (valid, composable_code, justification) = generate_valid_code(client,
+                                                    system_prompt =COMPOSABLE_CODER_PROMPT,
+                                                    user_prompt = function_description,
+                                                    token_to_check = "❌",
+                                                    judge_prompt = COMPOSABLE_JUDGE_PROMPT,
+                                                    filter = False)
+            converted_codes.append(composable_code)
+            justifications.append(justification)
+            valids.append(valid)
             print('-' * 80)
         print(f"Final User-Approved Test suggestions: {len(tests)}")
         print('*' * 40 + 'Final User-Approved Test Suggestions' + '*' * 40)
@@ -314,7 +316,9 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
                     'status'        : status,
                     'weights'       : weights,
                     'codes'         : codes,
-                    'translations'  : converted_code,
+                    'translations'  : converted_codes,
+                    'valid_trans'   : valids,
+                    'justification' : justifications,
                     'tests'         : tests
                 }
         if get_pruned_stats_in_global:
