@@ -260,7 +260,7 @@ def generate_valid_code(
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=max_tokens,
-            temperature=temperature,
+            temperature=coder_temp,
             n=1
         )
         generated_code = gen_response.choices[0].message.content.strip()
@@ -274,7 +274,7 @@ def generate_valid_code(
                 {"role": "user", "content": generated_code},
             ],
             max_tokens=max_tokens,
-            temperature=temperature,
+            temperature=judge_temp,
             n=1
         )
         judgement = judge_response.choices[0].message.content.strip()
