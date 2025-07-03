@@ -291,7 +291,9 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         for code in codes:
             print(code)
             composable_code = generate_valid_code(client,
-                                                  user_prompt = COMPOSABLE_CODER_PROMPT,
+                                                  system_prompt = COMPOSABLE_CODER_PROMPT,
+                                                  user_prompt = function_description,
+                                                  token_to_check = "❌",
                                                   judge_prompt = COMPOSABLE_JUDGE_PROMPT,
                                                   filter = False)
             converted_code.append((code,composable_code))
