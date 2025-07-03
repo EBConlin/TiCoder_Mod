@@ -19,6 +19,9 @@ import execution as ex
 import static_mutation as sm
 import user_interaction as ui
 from config import debug_print
+from query_chat_model import generate_valid_code
+from openai import OpenAI
+from collections import defaultdict
 
 # Extra global variables
 total_tests = 0
@@ -29,6 +32,120 @@ valid_pruned_tests = 0
 valid_pruned_test_exists_for_program = 0
 qm = None
 counter = None
+COMPOSABLE_CODER_PROMPT =  """
+
+        You are a strict Monarch spec generator.
+
+        Your job is to convert a pure, restricted Python function into a structured YAML spec that fully complies with the Monarch Spec Safety Contract.
+
+        🧠 Constraints:
+        The Python function is guaranteed to be:
+        - Pure, total, deterministic
+        - Written using only composable primitives:
+        - list comprehensions
+        - map, filter, reduce
+        - restricted for-loops (no mutation, only append-to-result patterns)
+        - if/else expressions or conditions inside comprehensions
+        - no imports, no side effects, no global state
+
+        📦 Canonical DSL Operations (Allowed Postcondition Templates):
+        - `map`:        output == [transform(x) for x in input]
+        - `filter`:     output == [x for x in input if condition(x)]
+        - `reduce`:     output == reduce(func, input)
+        - `group_by`:   output == group_by(input, key_fn)
+        - `sort`:       output == sorted(input, key=...)
+        - `join`:       output == join(A, B, on=key)
+        - `if`:         output == [transform(x) if condition(x) else alt(x) for x in input]
+        - `loop`:       output == [f(x) for x in input] (must terminate, no state)
+
+        Each postcondition must be expressed using only the above patterns. These operations may be composed — for example:
+        post:
+        - temp == [x for x in numbers if x > 0]
+        - output == [x * 2 for x in temp]
+
+        📜 Output Format:
+        Output must be a Monarch YAML spec with:
+        - `id`: function name
+        - `input`: list of named, fully typed variables (e.g. `List[int]`)
+        - `output`: a concrete return type
+        - `pre`: runtime-checkable logic (e.g. `numbers is not None`)
+        - `post`: deterministic transformation logic using the allowed forms
+        - `edge_cases`: structured by type (e.g., null, empty, singleton)
+        - `pure: true`
+        - `meta.notes`: optional intent clarifications
+
+        📎 Example:
+        id: filter_and_double
+        input:
+        - numbers: List[int]
+        output: List[int]
+        pre:
+        - numbers is not None
+        post:
+        - temp == [x for x in numbers if x > 0]
+        - output == [x * 2 for x in temp]
+        edge_cases:
+        null: raise error
+        empty: return []
+        singleton: return [x * 2 for x in numbers] if numbers[0] > 0 else []
+        pure: true
+        meta:
+        notes:
+            - Only positives are doubled
+
+        🛡️ Rules:
+        - Do not generate executable code or markdown
+        - Do not invent operations outside the allowed set
+        - All logic must be total, stateless, and canonical
+        - Output only a YAML spec block
+"""
+
+COMPOSABLE_JUDGE_PROMPT = """
+You are a specification compliance judge in the Monarch DSL synthesis pipeline.
+
+You are given:
+- A restricted Python function
+- A proposed Monarch YAML spec
+
+Your task is to determine whether the spec is valid and complete.
+
+📦 Allowed DSL Operations (Postcondition Forms):
+- `map`:        output == [transform(x) for x in input]
+- `filter`:     output == [x for x in input if condition(x)]
+- `reduce`:     output == reduce(func, input)
+- `group_by`:   output == group_by(input, key_fn)
+- `sort`:       output == sorted(input, key=...)
+- `join`:       output == join(A, B, on=key)
+- `if`:         output == [f(x) if cond(x) else g(x) for x in input]
+- `loop`:       output == [f(x) for x in input] (must be terminating, pure)
+
+✅ Chaining is allowed. For example:
+post:
+  - step1 == [x for x in data if x > 0]
+  - output == [x * 2 for x in step1]
+
+📜 Required Fields in the YAML Spec:
+- `input`: named, fully typed variables
+- `output`: a single concrete return type
+- `pre`: runtime-checkable logic using input variables
+- `post`: logic using only the allowed operations
+- `edge_cases`: derived from input type templates (e.g., null, empty, singleton)
+- `pure: true`
+
+🧪 Output Format:
+Return one of:
+- ✅ PASSED
+- ❌ FAILED
+
+Include a justification. If FAILED, list all violations, such as:
+- postcondition not in canonical form
+- invalid operation (e.g., custom loop logic)
+- missing precondition or edge case
+- vague or underdefined logic
+
+❌ Do not regenerate code or specs.
+❌ Do not guess user intent.
+"""
 
 def prune_code_using_testgen(prog_data, code_suggestions, num_tests):
     global total_tests, valid_tests, valid_test_exists_for_program, qm
@@ -139,6 +256,7 @@ def get_pruned_bad_codes_for_tests(tests, codes, prog_data):
 
 
 def tappy_entry_func(prog_data, orig_codes, codes, results, n):
+    
     global qm, counter
     if counter is None:
         counter = config.TokenCounter(config.token_per_minute_limit)
@@ -160,14 +278,23 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         # print final code suggestions
         print(f"Pruned {orig_code_len - len(codes)} / {orig_code_len} codes using test queries")
         debug_print('*' * 40 + 'Pruned Codes' + '*' * 40)
+        client = openai.OpenAI()
         for code in set(orig_codes) - set(codes):
             debug_print(code)
             debug_print('-' * 80)
 
         print(f"Final Code suggestions: {len(codes)}")
         print('*' * 40 + 'Final Code Suggestions that are consistent with user-approved tests' + '*' * 40)
+        client = OpenAI()
+        function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
+        converted_code = []
         for code in codes:
             print(code)
+            composable_code = generate_valid_code(client,
+                                                  user_prompt = COMPOSABLE_CODER_PROMPT,
+                                                  judge_prompt = COMPOSABLE_JUDGE_PROMPT,
+                                                  filter = False)
+            converted_code.append((code,composable_code))
             print('-' * 80)
         print(f"Final User-Approved Test suggestions: {len(tests)}")
         print('*' * 40 + 'Final User-Approved Test Suggestions' + '*' * 40)
@@ -185,6 +312,7 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
                     'status'        : status,
                     'weights'       : weights,
                     'codes'         : codes,
+                    'translations'  : converted_code,
                     'tests'         : tests
                 }
         if get_pruned_stats_in_global:

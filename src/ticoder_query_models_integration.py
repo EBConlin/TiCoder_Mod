@@ -225,6 +225,10 @@ class HaskellTiCoderIntegration:
         
         diagnostics = []
         start_time = time.time()
+
+        print("=== Raw LLM Response ===")
+        print(response_content)
+        print("========================")
         
         def add_diagnostic(level: DiagnosticLevel, message: str, data: Optional[Dict] = None):
             diagnostics.append(TranslationDiagnostic(

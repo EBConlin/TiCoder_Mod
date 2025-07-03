@@ -233,7 +233,7 @@ def generate_valid_code(
     coder_temp: float = 0.3,
     judge_temp: float = 0,
     max_tokens: int = 1024,
-) -> Tuple[bool, str, str]:
+    filter: bool = True) -> Tuple[bool, str, str]:
     """
     Run LLM call repeatedly:
     - Generate code
@@ -264,7 +264,11 @@ def generate_valid_code(
             n=1
         )
         generated_code = gen_response.choices[0].message.content.strip()
-        clean_code = filter_response(generated_code)
+        if filter:
+            clean_code = filter_response(generated_code)
+        else:
+            clean_code = generated_code
+            
         bad_code.append(clean_code)
 
         # Judge the generated code
