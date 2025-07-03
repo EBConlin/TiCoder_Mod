@@ -246,7 +246,7 @@ def generate_valid_code(
             str  - Last judgement result
     """
     bad_code = []
-
+    
     for _ in range(max_iterations):
         formatted_system_prompt = system_prompt.format(
             bad_examples_section=format_bad_examples(bad_code)
@@ -264,25 +264,26 @@ def generate_valid_code(
             n=1
         )
         generated_code = gen_response.choices[0].message.content.strip()
-        bad_code.append(generated_code)
+        clean_code = filter_response(generated_code)
+        bad_code.append(clean_code)
 
         # Judge the generated code
         judge_response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": judge_prompt},
-                {"role": "user", "content": generated_code},
+                {"role": "user", "content": clean_code},
             ],
             max_tokens=max_tokens,
             temperature=judge_temp,
             n=1
         )
         judgement = judge_response.choices[0].message.content.strip()
-
+            
         if token_to_check not in judgement:
-            return True, generated_code, judgement
+            return True, clean_code, judgement
 
-    return False, generated_code, judgement
+    return False, clean_code, judgement
 
 def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
     
