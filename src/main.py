@@ -287,7 +287,9 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         print('*' * 40 + 'Final Code Suggestions that are consistent with user-approved tests' + '*' * 40)
         client = OpenAI()
         function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
-        converted_code = []
+        converted_codes = []
+        justifications = []
+        valids = []
         for code in codes:
             print(code)
             (valid, composable_code, justification) = generate_valid_code(client,
