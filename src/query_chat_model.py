@@ -316,6 +316,8 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
         
 def get_custom_code_suggestions(client,prog_data,additional_tests,n_iterations) -> List[str]:
     function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt'] + "\n" + additional_tests
+    print("HIYAAAA")
+    print(function_description)
     results_dict = run_openai_pipeline(client, function_description)
     return [results_dict["python"] for _ in range(n_iterations)]
 
