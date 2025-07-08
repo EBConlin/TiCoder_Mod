@@ -57,21 +57,31 @@ Respond with:
 """
 
 PYTHON_JUDGE_PROMPT = """
-You are a code compliance judge in a DSL synthesis pipeline. You are given a Python function and must determine whether it is valid for conversion into a restricted DSL.
+You are a code compliance judge in a DSL synthesis pipeline. You are given a Python function and a set of test cases. Your task is to evaluate whether the function:
 
-Check for:
-- ✅ Syntactically valid Python code (no syntax errors or malformed formatting)
-- ✅ Proper formatting: no markdown, no backticks, no Haskell-style syntax
-- ✅ Compliance with DSL rules
+1. ✅ Is syntactically valid Python (no syntax errors, malformed formatting, or non-Python syntax)
+2. ✅ Is properly formatted (no markdown, no backticks, no Haskell-style or pseudo-code)
+3. ✅ Complies with the DSL rules
+4. ✅ Passes the provided test cases (or is at least *logically aligned* with the test case expectations)
 
 DSL Rules:
 - ✅ Allowed: map, filter, reduce, list comprehensions, simple for-loops, arithmetic, and conditionals
-- ❌ Forbidden: any import, IO, re, json, open, eval, mutation, recursion, or advanced syntax
+- ❌ Forbidden: any import, IO operations, use of `re`, `json`, `open`, `eval`, mutation of external state, recursion, or advanced Python syntax
 
-Respond with:
-- ✅ DSL-Compatible or ❌ Rejected
-- Short reason and code excerpts if rejected
+Test Format:
+The test cases are written using standard `assert` statements that call the target function and expect specific outputs.
+
+Your Response:
+- ✅ DSL-Compatible if the code is syntactically valid, DSL-compliant, and will likely pass all test cases
+- ❌ Rejected if it fails any of the above checks
+
+If ❌ Rejected:
+- Brief explanation of why
+- Code excerpt(s) or test(s) that fail
+
+Tests:
 """
+
 
 
 def gen_and_prune_codes(client, prog_data, tests_in_ctxt, token_counter=None):
@@ -289,7 +299,7 @@ def generate_valid_code(
 
     return False, clean_code, judgement
 
-def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
+def run_openai_pipeline(client, function_description: str,additional_tests) -> Dict[str, str]:
     
     # Generate Haskell
     hs_valid, haskell_code, hs_judgement = generate_valid_code(client,
@@ -297,12 +307,14 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
                                                     user_prompt = function_description,
                                                     token_to_check = "❌",
                                                     judge_prompt = HASKELL_JUDGE_PROMPT)
+
+
     # Generate Python
     py_valid, python_code, py_judgement = generate_valid_code(client,
                                                     system_prompt = HASKELL_TO_PYTHON_LLM_PROMPT,
                                                     user_prompt = function_description,
                                                     token_to_check = "❌",
-                                                    judge_prompt = PYTHON_JUDGE_PROMPT)
+                                                    judge_prompt = PYTHON_JUDGE_PROMPT+"\n"+additional_tests)
     print(f"Haskell:\n{haskell_code}")
     print(f"Judgment: {hs_valid,hs_judgement}")
     print(f"Python:\n{python_code}")
@@ -315,10 +327,10 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
     }
         
 def get_custom_code_suggestions(client,prog_data,additional_tests,n_iterations) -> List[str]:
-    function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt'] + "\n" + additional_tests
+    function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
     print("HIYAAAA")
     print(function_description)
-    results_dict = run_openai_pipeline(client, function_description)
+    results_dict = run_openai_pipeline(client, function_description,additional_tests)
     return [results_dict["python"] for _ in range(n_iterations)]
 
 
