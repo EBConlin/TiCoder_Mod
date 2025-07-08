@@ -96,19 +96,19 @@ def gen_and_prune_codes(client, prog_data, tests_in_ctxt, token_counter=None):
 def get_code_suggestions(client, prog_data, tests_in_ctxt, token_counter):
     # take a context and a signature
     # create a prompt for Codex
-    prompt = get_prompt(prog_data)
-    if tests_in_ctxt is not None:
+    #prompt = get_prompt(prog_data)
+    #f tests_in_ctxt is not None:
         # add " " as the code extraction eats away a space (see get_codex_code_suggestions)
-        prompt = " " + "\n".join(tests_in_ctxt) + prompt
+        #prompt = " " + "\n".join(tests_in_ctxt) + prompt
 
-    print("Prompt for Code Generation:")
-    print('-' * 80)
-    print(prompt)
-    print('-' * 80)
+    #print("Prompt for Code Generation:")
+    #print('-' * 80)
+    #print(prompt)
+    #print('-' * 80)
     
-
+    additional_tests = " " + "\n".join(tests_in_ctxt)
     # query codex for suggestions
-    code_suggestions = get_custom_code_suggestions(client, prog_data, config.MAX_NUM_CODEX_CODE_SUGGESTIONS)
+    code_suggestions = get_custom_code_suggestions(client, prog_data, additional_tests, config.MAX_NUM_CODEX_CODE_SUGGESTIONS)
     
     debug_print('Codes' + '*' * 80)
     for suggestion in code_suggestions:
@@ -314,8 +314,8 @@ def run_openai_pipeline(client, function_description: str) -> Dict[str, str]:
         "python_judge": (py_valid,py_judgement)
     }
         
-def get_custom_code_suggestions(client,prog_data,n_iterations) -> List[str]:
-    function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
+def get_custom_code_suggestions(client,prog_data,additional_tests,n_iterations) -> List[str]:
+    function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt'] + "\n" + additional_tests
     results_dict = run_openai_pipeline(client, function_description)
     return [results_dict["python"] for _ in range(n_iterations)]
 
