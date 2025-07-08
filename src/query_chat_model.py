@@ -238,9 +238,9 @@ def generate_valid_code(
     user_prompt: str,
     token_to_check: str,
     judge_prompt: str,
-    max_iterations: int = 5,
+    max_iterations: int = 10,
     model: str = "gpt-4o",
-    coder_temp: float = 0.3,
+    coder_temp: float = 0.8,
     judge_temp: float = 0,
     max_tokens: int = 1024,
     filter: bool = True) -> Tuple[bool, str, str]:
