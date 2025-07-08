@@ -267,6 +267,7 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
 
     print('=' * 50  + 'Final Results' + '=' * 50)
     for num_queries, codes, tests, neg_tests in local_results:
+        client = OpenAI()
         print(f">>> Number of User queries = {num_queries}")
         if config.regenerate_code_with_tests_in_prompt and len(tests) > 0:
             orig_codes, codes = qm.gen_and_prune_codes(client, prog_data, tests[:3] if len(tests) > 3 else tests, token_counter=counter)
@@ -285,7 +286,7 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
 
         print(f"Final Code suggestions: {len(codes)}")
         print('*' * 40 + 'Final Code Suggestions that are consistent with user-approved tests' + '*' * 40)
-        client = OpenAI()
+        
         function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
         converted_codes = []
         justifications = []
