@@ -22,6 +22,8 @@ from config import debug_print
 from query_chat_model import generate_valid_code
 from openai import OpenAI
 from collections import defaultdict
+import astpretty
+import ast
 
 # Extra global variables
 total_tests = 0
@@ -255,6 +257,29 @@ def get_pruned_bad_codes_for_tests(tests, codes, prog_data):
     return pruned_tests, len(codes)
 
 
+import ast
+
+def parse_function_to_ast(function_str):
+    """
+    Parses a string containing a Python function definition
+    into an Abstract Syntax Tree (AST) object.
+    
+    Args:
+        function_str (str): The source code string of the Python function.
+    
+    Returns:
+        ast.AST: The parsed AST tree.
+    """
+    try:
+        # Parse the string to an AST
+        tree = ast.parse(function_str)
+        astpretty.pprint(tree)
+        return tree
+    except SyntaxError as e:
+        print("SyntaxError while parsing function:")
+        print(e)
+        return None
+
 def tappy_entry_func(prog_data, orig_codes, codes, results, n):
     
     global qm, counter
@@ -287,14 +312,22 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         print('*' * 40 + 'Final Code Suggestions that are consistent with user-approved tests' + '*' * 40)
         client = OpenAI()
         function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
-        converted_code = []
+        converted_codes = []
+        justifications = []
+        valids = []
+        asts = []
         for code in codes:
             print(code)
-            composable_code = generate_valid_code(client,
-                                                  user_prompt = COMPOSABLE_CODER_PROMPT,
-                                                  judge_prompt = COMPOSABLE_JUDGE_PROMPT,
-                                                  filter = False)
-            converted_code.append((code,composable_code))
+            (valid, composable_code, justification) = generate_valid_code(client,
+                                                    system_prompt =COMPOSABLE_CODER_PROMPT,
+                                                    user_prompt = function_description,
+                                                    token_to_check = "❌",
+                                                    judge_prompt = COMPOSABLE_JUDGE_PROMPT,
+                                                    filter = False)
+            asts.append(parse_function_to_ast(code))
+            converted_codes.append(composable_code)
+            justifications.append(justification)
+            valids.append(valid)
             print('-' * 80)
         print(f"Final User-Approved Test suggestions: {len(tests)}")
         print('*' * 40 + 'Final User-Approved Test Suggestions' + '*' * 40)
@@ -312,8 +345,11 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
                     'status'        : status,
                     'weights'       : weights,
                     'codes'         : codes,
-                    'translations'  : converted_code,
-                    'tests'         : tests
+                    'translations'  : converted_codes,
+                    'valid_trans'   : valids,
+                    'justification' : justifications,
+                    'tests'         : tests,
+                    'asts'          : asts
                 }
         if get_pruned_stats_in_global:
             num_of_original_tests_left = 0
