@@ -292,6 +292,7 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
 
     print('=' * 50  + 'Final Results' + '=' * 50)
     for num_queries, codes, tests, neg_tests in local_results:
+        client = OpenAI()
         print(f">>> Number of User queries = {num_queries}")
         if config.regenerate_code_with_tests_in_prompt and len(tests) > 0:
             orig_codes, codes = qm.gen_and_prune_codes(client, prog_data, tests[:3] if len(tests) > 3 else tests, token_counter=counter)
@@ -310,24 +311,16 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
 
         print(f"Final Code suggestions: {len(codes)}")
         print('*' * 40 + 'Final Code Suggestions that are consistent with user-approved tests' + '*' * 40)
-        client = OpenAI()
+        
         function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
-        converted_codes = []
-        justifications = []
-        valids = []
-        asts = []
+        converted_code = []
         for code in codes:
             print(code)
-            (valid, composable_code, justification) = generate_valid_code(client,
-                                                    system_prompt =COMPOSABLE_CODER_PROMPT,
-                                                    user_prompt = function_description,
-                                                    token_to_check = "❌",
-                                                    judge_prompt = COMPOSABLE_JUDGE_PROMPT,
-                                                    filter = False)
-            asts.append(parse_function_to_ast(code))
-            converted_codes.append(composable_code)
-            justifications.append(justification)
-            valids.append(valid)
+            composable_code = generate_valid_code(client,
+                                                  user_prompt = COMPOSABLE_CODER_PROMPT,
+                                                  judge_prompt = COMPOSABLE_JUDGE_PROMPT,
+                                                  filter = False)
+            converted_code.append((code,composable_code))
             print('-' * 80)
         print(f"Final User-Approved Test suggestions: {len(tests)}")
         print('*' * 40 + 'Final User-Approved Test Suggestions' + '*' * 40)
@@ -345,11 +338,8 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
                     'status'        : status,
                     'weights'       : weights,
                     'codes'         : codes,
-                    'translations'  : converted_codes,
-                    'valid_trans'   : valids,
-                    'justification' : justifications,
-                    'tests'         : tests,
-                    'asts'          : asts
+                    'translations'  : converted_code,
+                    'tests'         : tests
                 }
         if get_pruned_stats_in_global:
             num_of_original_tests_left = 0
