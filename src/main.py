@@ -278,7 +278,7 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         # print final code suggestions
         print(f"Pruned {orig_code_len - len(codes)} / {orig_code_len} codes using test queries")
         debug_print('*' * 40 + 'Pruned Codes' + '*' * 40)
-        client = openai.OpenAI()
+
         for code in set(orig_codes) - set(codes):
             debug_print(code)
             debug_print('-' * 80)
