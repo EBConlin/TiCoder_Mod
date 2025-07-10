@@ -314,12 +314,14 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
         
         function_description = prog_data['sig'] + "\n\n" + prog_data['ctxt']
         converted_code = []
+        asts = []        
         for code in codes:
             print(code)
             composable_code = generate_valid_code(client,
                                                   user_prompt = COMPOSABLE_CODER_PROMPT,
                                                   judge_prompt = COMPOSABLE_JUDGE_PROMPT,
                                                   filter = False)
+            asts.append(parse_function_to_ast(code))
             converted_code.append((code,composable_code))
             print('-' * 80)
         print(f"Final User-Approved Test suggestions: {len(tests)}")
@@ -339,7 +341,8 @@ def tappy_entry_func(prog_data, orig_codes, codes, results, n):
                     'weights'       : weights,
                     'codes'         : codes,
                     'translations'  : converted_code,
-                    'tests'         : tests
+                    'tests'         : tests,
+                    'asts'          : asts
                 }
         if get_pruned_stats_in_global:
             num_of_original_tests_left = 0
